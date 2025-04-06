@@ -121,7 +121,7 @@ if __name__ == "__main__":
     # Generate a random MxN measurement matrix A with elements sampled from gaussian 0 mean and 1/M variance
     M = 500 # Number measurements
     N = 64 * 64 * 3 # Number of pixels in each image
-    A = np.random.randn(M, N)
+    A = np.random.randn(M, N) / np.sqrt(M)  # Normalized to have variance 1/M
 
     # Sample images using A
     y_batch = np.zeros((batch_size, M))
@@ -131,7 +131,14 @@ if __name__ == "__main__":
     # Estimate images using lasso_dct_estimator
     # x_hat_batch = lasso_dct_estimator(A, y_batch, batch_size)
     # Estimate images using omp_dct_estimator
-    x_hat_batch = omp_dct_estimator(A, y_batch, batch_size)
+    x_hat_batch = omp_dct_estimator(A, y_batch, batch_size, 1e-6)
+
+    # Compute NMSE
+    NMSE = 0.0
+    for i in range(batch_size):
+        NMSE += np.linalg.norm(images[i].reshape(-1) - x_hat_batch[i]) ** 2 / np.linalg.norm(images[i].reshape(-1)) ** 2
+    NMSE /= batch_size
+    print("NMSE:", NMSE)
 
     # Display original and the estimated images
     fig = plt.figure(figsize=(10, 5))

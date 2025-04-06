@@ -3,6 +3,29 @@ from PIL import Image
 from torchvision import transforms
 from torch.utils.data import Dataset, DataLoader
 
+class CelebADataset(Dataset):
+        def __init__(self, root_dir, transform=None):
+            """
+            Custom Dataset to handle flat directory of CelebA images.
+
+            Args:
+                root_dir (str): Path to the folder containing images.
+                transform (callable, optional): Transformations to apply to the images.
+            """
+            self.root_dir = root_dir
+            self.transform = transform
+            self.image_files = [f for f in os.listdir(root_dir) if f.endswith(('.jpg', '.png'))]
+
+        def __len__(self):
+            return len(self.image_files)
+
+        def __getitem__(self, idx):
+            img_path = os.path.join(self.root_dir, self.image_files[idx])
+            image = Image.open(img_path).convert("RGB")  # Ensure 3-channel RGB
+            if self.transform:
+                image = self.transform(image)
+            return image, 0  # Return dummy label (0) since labels are not needed
+
 class CelebALoader:
     def __init__(self, root_dir, batch_size=64, shuffle=True, crop_size=140, resize_size=64):
         """
@@ -28,30 +51,7 @@ class CelebALoader:
         ])
 
         # Initialize the dataset
-        self.dataset = self.CelebADataset(root_dir=self.root_dir, transform=self.transform)
-
-    class CelebADataset(Dataset):
-        def __init__(self, root_dir, transform=None):
-            """
-            Custom Dataset to handle flat directory of CelebA images.
-
-            Args:
-                root_dir (str): Path to the folder containing images.
-                transform (callable, optional): Transformations to apply to the images.
-            """
-            self.root_dir = root_dir
-            self.transform = transform
-            self.image_files = [f for f in os.listdir(root_dir) if f.endswith(('.jpg', '.png'))]
-
-        def __len__(self):
-            return len(self.image_files)
-
-        def __getitem__(self, idx):
-            img_path = os.path.join(self.root_dir, self.image_files[idx])
-            image = Image.open(img_path).convert("RGB")  # Ensure 3-channel RGB
-            if self.transform:
-                image = self.transform(image)
-            return image, 0  # Return dummy label (0) since labels are not needed
+        self.dataset = CelebADataset(root_dir=self.root_dir, transform=self.transform)
 
     def get_dataloader(self):
         """
