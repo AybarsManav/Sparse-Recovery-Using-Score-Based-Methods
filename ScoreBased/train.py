@@ -22,7 +22,8 @@ from torchvision import transforms
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--gpu', type=int, default=0)
-parser.add_argument('--train', type=str, default='CDL-C')
+parser.add_argument('--resume', type=str, default=None, help="Path to checkpoint to resume training")
+parser.add_argument('--dataset_path', type=str, default='data/processed_celeba', help="Dataset to use for training")
 args = parser.parse_args()
 
 # Disable TF32 due to potential precision issues
@@ -56,11 +57,10 @@ config.optim.lr            = 1e-4
 config.optim.beta1         = 0.90
 config.optim.amsgrad       = False
 config.optim.eps           = 3.3e-6
-#the config uses 0.00000001
 
 # Training
-config.training.batch_size     = 128 #128 
-config.training.num_workers    = 4  #nothing 
+config.training.batch_size     = 64 #128 
+config.training.num_workers    = 4
 config.training.n_epochs       = 10 #500000
 config.training.anneal_power   = 2 
 config.training.log_all_sigmas = False
@@ -68,26 +68,22 @@ config.training.log_all_sigmas = False
 # Testing
 config.test.langevin_steps = 5
 
-
 # Data
-config.data.channel        = args.train
-config.data.channels       = 3 # all real
+config.data.channels       = 3
 config.data.noise_std      = 0
 config.data.image_size     = [64, 64] # 64
 config.data.num_pilots     = config.data.image_size[1]
-config.data.norm_channels  = 'global' #InstanceNorm++
+config.data.norm_channels  = 'global'
 config.data.logit_transform= False
 config.data.rescaled       = True
-#config.data.spacing_list   = [0.5] # Training and validation
 
 transform = transforms.Compose([
-    # transforms.Resize((64, 64)),
     transforms.ToTensor(),
     transforms.Normalize((0.5,), (0.5,))
 ])
 
 # Get datasets and loaders for channels
-dataset = CelebADataset(root_dir='data/processed_celeba', transform=transform)
+dataset = CelebADataset(root_dir=args.dataset_path, transform=transform)
 
 # Split dataset into training and validation sets
 train_size = int(0.8 * len(dataset))
@@ -95,22 +91,8 @@ val_size = len(dataset) - train_size
 train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
 
 # Create DataLoaders
-train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=64, shuffle=True)
-
-# # Choose the inference step size (epsilon) according to [Song '20]
-# candidate_steps = np.logspace(-13, -8, 1000)
-# step_criterion  = np.zeros((len(candidate_steps)))
-# gamma_rate      = 1 / config.model.sigma_rate
-# for idx, step in enumerate(candidate_steps):
-#     step_criterion[idx] = (1 - step / config.model.sigma_end ** 2) \
-#         ** (2 * config.model.num_classes) * (gamma_rate ** 2 -
-#             2 * step / (config.model.sigma_end ** 2 - config.model.sigma_end ** 2 * (
-#                 1 - step / config.model.sigma_end ** 2) ** 2)) + \
-#             2 * step / (config.model.sigma_end ** 2 - config.model.sigma_end ** 2 * (
-#                 1 - step / config.model.sigma_end ** 2) ** 2)
-# best_idx = np.argmin(np.abs(step_criterion - 1.))
-# config.model.step_size = candidate_steps[best_idx]
+train_loader = DataLoader(train_dataset, batch_size=config.training.batch_size, shuffle=True)
+val_loader = DataLoader(val_dataset, batch_size=config.training.batch_size, shuffle=True)
 
 # Instantiate model
 diffuser = NCSNv2Deepest(config)
@@ -127,35 +109,40 @@ if config.model.ema:
 # Get all sigma values for the discretized VE-SDE
 sigmas = get_sigmas(config)
 
-# Sample fixed validation data
-#val_H_list = []
-#for idx in range(len(config.data.spacing_list)):
-#    val_sample = next(val_iters[idx])
-#    val_H_list.append(val_sample['H_herm'].cuda())
+# Check for existing checkpoint
+if args.resume:
+    print(f"Resuming training from checkpoint: {args.resume}")
+    checkpoint = torch.load(args.resume, weights_only=False)
+    start_epoch = checkpoint['epoch'] + 1
+    step = checkpoint['step']
+    diffuser.load_state_dict(checkpoint['model_state'])
+    optimizer.load_state_dict(checkpoint['optimizer_state'])
+    if config.model.ema and checkpoint['ema_state'] is not None:
+        ema_helper.load_state_dict(checkpoint['ema_state'])
+    train_loss = checkpoint['train_loss']
+    val_loss = checkpoint['val_loss']
+else:
+    print("No checkpoint found. Starting training from scratch.")
+    train_loss, val_loss = [], []
 
 # Logging
 config.log_path = './models/'
 os.makedirs(config.log_path, exist_ok=True)
-train_loss, val_loss  = [], []
+
 # For each epoch
 for epoch in tqdm(range(start_epoch, config.training.n_epochs)):
     # For each batch
     for i, sample in tqdm(enumerate(train_loader)):
         diffuser.train()
         step += 1
-        # Move data to device
-        #for key in sample:
-        #    sample[key] = sample[key].cuda()
-
-        sample = sample[0]
 
         # Move data to device
-        sample = sample.to(config.device)
-        # Compute DSM loss using Hermitian channels
+        sample = sample[0].to(config.device)
+
+        # Compute DSM loss
         loss = anneal_dsm_score_estimation(
             diffuser, sample, sigmas, None, 
             config.training.anneal_power)
-        # Logging
         train_loss.append(loss.item())
         
         # Step
@@ -168,39 +155,39 @@ for epoch in tqdm(range(start_epoch, config.training.n_epochs)):
             ema_helper.update(diffuser)
             
         # Verbose
-        if step % 100 == 0 or step == 1:
+        if step % 100 == 0 or i == 0:
             if config.model.ema:
                 val_score = ema_helper.ema_copy(diffuser)
             else:
                 val_score = diffuser
             
-            # For each validation setup
-            # Compute validation loss over the entire validation set
+            # Compute validation loss
             local_val_losses = []
-            diffuser.eval()  # Set model to evaluation mode
+            diffuser.eval()
             with torch.no_grad():
                 for val_sample in val_loader:
-                    # Move data to device
                     val_sample = val_sample[0].to(config.device)
-
-                    # Compute DSM loss
                     val_dsm_loss = anneal_dsm_score_estimation(
                         val_score, val_sample, sigmas, None, config.training.anneal_power
                     ) 
                     local_val_losses.append(val_dsm_loss.item())
-                    break # Only one batch for validation
+                    break  # Only one batch for validation
 
-                # Average validation loss over all batches
                 average_val_loss = np.mean(local_val_losses)
                 val_loss.append(average_val_loss)
 
-            # Save final weights
-            torch.save({'model_state': diffuser.state_dict(),
-                        'optim_state': optimizer.state_dict(),
-                        'config': config,
-                        'train_loss': train_loss,
-                        'val_loss': val_loss}, 
-                    os.path.join(config.log_path, 'final_model.pt'))
+            # Save checkpoint
+            checkpoint_path = os.path.join(config.log_path, 'checkpoint_latest.pt')
+            torch.save({
+                'epoch': epoch,
+                'step': step,
+                'model_state': diffuser.state_dict(),
+                'optimizer_state': optimizer.state_dict(),
+                'ema_state': ema_helper.state_dict() if config.model.ema else None,
+                'train_loss': train_loss,
+                'val_loss': val_loss,
+                'config': config,
+            }, checkpoint_path)
 
         # Print validation loss
         print('Epoch %d, Step %d, Train Loss (EMA) %.3f, Val. Loss %.3f\n' % (
@@ -208,7 +195,7 @@ for epoch in tqdm(range(start_epoch, config.training.n_epochs)):
         
 # Save final weights
 torch.save({'model_state': diffuser.state_dict(),
-            'optim_state': optimizer.state_dict(),
+            'optimizer_state': optimizer.state_dict(),
             'config': config,
             'train_loss': train_loss,
             'val_loss': val_loss}, 
