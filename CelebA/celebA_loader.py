@@ -1,7 +1,8 @@
-import os
+import os, sys
 from PIL import Image
 from torchvision import transforms
 from torch.utils.data import Dataset, DataLoader
+sys.path.append('./')
 
 class CelebADataset(Dataset):
         def __init__(self, root_dir, transform=None):
