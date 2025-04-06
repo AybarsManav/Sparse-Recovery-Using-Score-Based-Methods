@@ -59,7 +59,7 @@ config.optim.amsgrad       = False
 config.optim.eps           = 3.3e-6
 
 # Training
-config.training.batch_size     = 128 #128 
+config.training.batch_size     = 64 #128 
 config.training.num_workers    = 4
 config.training.n_epochs       = 10 #500000
 config.training.anneal_power   = 2 
