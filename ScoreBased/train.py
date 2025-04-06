@@ -45,7 +45,7 @@ config.model.normalization = 'InstanceNorm++'
 config.model.nonlinearity  = 'elu'
 config.model.sigma_dist    = 'geometric'
 config.model.num_classes   = 500 # 500
-config.model.ngf           = 32 #128
+config.model.ngf           = 128 #128
 config.model.sigma_begin = 90
 config.model.sigma_end   = 0.01
 
@@ -61,7 +61,7 @@ config.optim.eps           = 3.3e-6
 # Training
 config.training.batch_size     = 128 #128 
 config.training.num_workers    = 4  #nothing 
-config.training.n_epochs       = 1 #500000
+config.training.n_epochs       = 10000 #500000
 config.training.anneal_power   = 2 
 config.training.log_all_sigmas = False
 
