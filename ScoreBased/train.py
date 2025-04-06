@@ -61,7 +61,7 @@ config.optim.eps           = 3.3e-6
 # Training
 config.training.batch_size     = 128 #128 
 config.training.num_workers    = 4  #nothing 
-config.training.n_epochs       = 5 #500000
+config.training.n_epochs       = 1 #500000
 config.training.anneal_power   = 2 
 config.training.log_all_sigmas = False
 
@@ -137,7 +137,6 @@ sigmas = get_sigmas(config)
 config.log_path = './models/'
 os.makedirs(config.log_path, exist_ok=True)
 train_loss, val_loss  = [], []
-
 # For each epoch
 for epoch in tqdm(range(start_epoch, config.training.n_epochs)):
     # For each batch
@@ -156,7 +155,6 @@ for epoch in tqdm(range(start_epoch, config.training.n_epochs)):
         loss = anneal_dsm_score_estimation(
             diffuser, sample, sigmas, None, 
             config.training.anneal_power)
-        
         # Logging
         train_loss.append(loss.item())
         
@@ -195,6 +193,14 @@ for epoch in tqdm(range(start_epoch, config.training.n_epochs)):
                 # Average validation loss over all batches
                 average_val_loss = np.mean(local_val_losses)
                 val_loss.append(average_val_loss)
+
+            # Save final weights
+            torch.save({'model_state': diffuser.state_dict(),
+                        'optim_state': optimizer.state_dict(),
+                        'config': config,
+                        'train_loss': train_loss,
+                        'val_loss': val_loss}, 
+                    os.path.join(config.log_path, 'final_model.pt'))
 
         # Print validation loss
         print('Epoch %d, Step %d, Train Loss (EMA) %.3f, Val. Loss %.3f\n' % (
