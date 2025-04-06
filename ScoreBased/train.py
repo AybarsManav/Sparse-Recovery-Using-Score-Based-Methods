@@ -23,6 +23,7 @@ from torchvision import transforms
 parser = argparse.ArgumentParser()
 parser.add_argument('--gpu', type=int, default=0)
 parser.add_argument('--resume', type=str, default=None, help="Path to checkpoint to resume training")
+parser.add_argument('--dataset_path', type=str, default='data/processed_celeba', help="Dataset to use for training")
 args = parser.parse_args()
 
 # Disable TF32 due to potential precision issues
@@ -82,7 +83,7 @@ transform = transforms.Compose([
 ])
 
 # Get datasets and loaders for channels
-dataset = CelebADataset(root_dir='data/processed_celeba', transform=transform)
+dataset = CelebADataset(root_dir=args.dataset_path, transform=transform)
 
 # Split dataset into training and validation sets
 train_size = int(0.8 * len(dataset))
