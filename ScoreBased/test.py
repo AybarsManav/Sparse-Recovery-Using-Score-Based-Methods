@@ -29,9 +29,13 @@ model.load_state_dict(contents['model_state'])
 model.eval()
 
 # The A should be the same with the one used in OMP or LASSO
-M = 500 # Number measurements
+M = 5000 # Number measurements
 N = 64 * 64 * 3 # Number of pixels in each image
-A = np.random.randn(M, N) / np.sqrt(M)  # Normalized to have variance 1/M
+# A = np.random.randn(M, N) / np.sqrt(M)  # Normalized to have variance 1/M
+# Instead of random A matrix create an identity matrix and randomly select M rows
+identity_matrix = np.eye(N)  # Create an identity matrix of size N x N
+selected_rows = np.random.choice(N, M, replace=False)  # Randomly select M rows
+A = identity_matrix[selected_rows, :]  # Select the rows from the identity matrix
 # A = contents['A'] # Get the measurement matrix A
 # [M , N] = A.shape # Get the dimensions of A
 A = torch.from_numpy(A).float()

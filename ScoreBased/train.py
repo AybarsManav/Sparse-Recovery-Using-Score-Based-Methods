@@ -45,7 +45,7 @@ config.model.normalization = 'InstanceNorm++'
 config.model.nonlinearity  = 'elu'
 config.model.sigma_dist    = 'geometric'
 config.model.num_classes   = 500 # 500
-config.model.ngf           = 32 #128
+config.model.ngf           = 128 #128
 config.model.sigma_begin = 90
 config.model.sigma_end   = 0.01
 
@@ -61,7 +61,7 @@ config.optim.eps           = 3.3e-6
 # Training
 config.training.batch_size     = 128 #128 
 config.training.num_workers    = 4  #nothing 
-config.training.n_epochs       = 1 #500000
+config.training.n_epochs       = 5 #500000
 config.training.anneal_power   = 2 
 config.training.log_all_sigmas = False
 
@@ -198,10 +198,7 @@ for epoch in tqdm(range(start_epoch, config.training.n_epochs)):
 
         # Print validation loss
         print('Epoch %d, Step %d, Train Loss (EMA) %.3f, Val. Loss %.3f\n' % (
-            epoch, step, loss, average_val_loss))
-        
-        if step == 1000:
-            break
+            epoch, step, loss, val_dsm_loss))
         
 # Save final weights
 torch.save({'model_state': diffuser.state_dict(),
