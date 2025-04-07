@@ -2,3 +2,6 @@ big_data
 data
 figures
 CelebA/__pycache__
+.vscode
+*.pyc
+*.rar

@@ -63,7 +63,7 @@ celebA_loader = CelebALoader(root_dir=dataset_path, batch_size=batch_size, shuff
 dataloader = celebA_loader.get_dataloader()
 
 # Annealling parameters
-alpha_step = 8e-6
+alpha_step = 3.3e-6
 beta_noise = 1.
 
 # Test NMSE

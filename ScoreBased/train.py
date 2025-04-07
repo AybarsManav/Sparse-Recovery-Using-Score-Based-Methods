@@ -8,6 +8,7 @@ sys.path.append('./')
 from tqdm import tqdm as tqdm
 
 from ncsnv2.models        import get_sigmas
+from ncsnv2.models import anneal_Langevin_dynamics
 from ncsnv2.models.ema    import EMAHelper
 from ncsnv2.models.ncsnv2 import NCSNv2Deepest
 from ncsnv2.losses        import get_optimizer
@@ -18,7 +19,7 @@ from torch.utils.data import DataLoader
 from dotmap           import DotMap
 from CelebA.celebA_loader import CelebADataset
 from torchvision import transforms
-
+from torchvision.utils import make_grid, save_image
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--gpu', type=int, default=0)
@@ -78,12 +79,19 @@ config.data.norm_channels  = 'global'
 config.data.logit_transform= False
 config.data.rescaled       = False
 
+# Sampling
+config.sampling.n_steps_each = 5
+config.sampling.step_lr      = 3.3e-6
+config.sampling.denoise     = True
+config.sampling.snapshot_sampling = True
+config.sampling.snap_shot_freq = 5000
+
 transform = transforms.Compose([
     transforms.ToTensor(),
     # transforms.Normalize((0.5,), (0.5,)) # Removed since the original paper does not use it
 ])
 
-# Get datasets and loaders for channels
+# Get datasets and loaders
 dataset = CelebADataset(root_dir=args.dataset_path, transform=transform)
 
 # Split dataset into training and validation sets
@@ -107,7 +115,7 @@ if config.model.ema:
     ema_helper = EMAHelper(mu=config.model.ema_rate)
     ema_helper.register(diffuser)
 
-# Get all sigma values for the discretized VE-SDE
+# Get all sigma values for the model
 sigmas = get_sigmas(config)
 
 # Check for existing checkpoint
@@ -155,7 +163,7 @@ for epoch in tqdm(range(start_epoch, config.training.n_epochs)):
         if config.model.ema:
             ema_helper.update(diffuser)
             
-        # Verbose
+        # Compute Validation loss every 100 steps
         if step % 100 == 0 or i == 0:
             if config.model.ema:
                 val_score = ema_helper.ema_copy(diffuser)
@@ -177,8 +185,13 @@ for epoch in tqdm(range(start_epoch, config.training.n_epochs)):
                 average_val_loss = np.mean(local_val_losses)
                 val_loss.append(average_val_loss)
                 del val_score
+            
+            # Print validation loss
+            print('Epoch %d, Step %d, Train Loss (EMA) %.3f, Val. Loss %.3f\n' % (
+                epoch, step, loss, val_dsm_loss))
+        
+        # Save checkpoints
         if config.training.checkpoint_freq > 0 and step % config.training.checkpoint_freq == 0:
-            # Save checkpoint
             checkpoint_path = os.path.join(config.log_path, f'checkpoint_{step}.pt')
             torch.save({
                 'epoch': epoch,
@@ -191,10 +204,40 @@ for epoch in tqdm(range(start_epoch, config.training.n_epochs)):
                 'config': config,
             }, checkpoint_path)
 
-        # Print validation loss
-        print('Epoch %d, Step %d, Train Loss (EMA) %.3f, Val. Loss %.3f\n' % (
-            epoch, step, loss, val_dsm_loss))
-        
+        # Save training samples
+        if config.sampling.snapshot_sampling and step % config.sampling.snap_shot_freq == 0:
+            print("Saving samples...")
+            if config.model.ema:
+                test_score = ema_helper.ema_copy(diffuser)
+            else:
+                test_score = diffuser
+
+            test_score.eval()
+
+            init_samples = torch.rand(10, config.data.channels,
+                                    config.data.image_size[0], config.data.image_size[1],
+                                    device=config.device)
+
+            all_samples = anneal_Langevin_dynamics(init_samples, test_score, sigmas,
+                                                config.sampling.n_steps_each,
+                                                config.sampling.step_lr,
+                                                final_only=True, verbose=True,
+                                                denoise=config.sampling.denoise)
+
+            sample = all_samples[-1].view(all_samples[-1].shape[0], config.data.channels,
+                                        config.data.image_size[0],
+                                        config.data.image_size[1])
+
+
+            image_grid = make_grid(sample, 5)
+            os.makedirs("samples/", exist_ok=True)
+            save_image(image_grid,
+                    os.path.join("samples/", 'image_grid_{}.png'.format(step)))
+            # torch.save(sample, os.path.join("samples/", 'samples_{}.pth'.format(step)))
+
+            del test_score
+            del all_samples
+
 # Save final weights
 torch.save({
         'epoch': epoch,
