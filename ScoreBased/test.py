@@ -5,6 +5,7 @@ import torch, sys
 sys.path.append('./')
 from tqdm import tqdm as tqdm
 from ncsnv2.models.ncsnv2 import NCSNv2Deepest
+from ncsnv2.models.ema    import EMAHelper
 from CelebA.celebA_loader import CelebALoader
 import matplotlib.pyplot as plt
 
@@ -25,13 +26,22 @@ contents = torch.load(target_file, weights_only=False)
 config = contents['config']
 model = NCSNv2Deepest(config=config)
 model = model.to(config.device)
-model.load_state_dict(contents['model_state'])
-model.eval()
 
+if config.model.ema:
+    ema_helper = EMAHelper(mu=config.model.ema_rate)
+    ema_helper.register(model)
+    ema_helper.load_state_dict(contents["ema_state"])
+    ema_helper.ema(model)
+else:
+    model.load_state_dict(contents['model_state'])
+
+model.eval()
+print("Is cuda available:", torch.cuda.is_available())
 # The A should be the same with the one used in OMP or LASSO
-M = 500 # Number measurements
 N = 64 * 64 * 3 # Number of pixels in each image
-# A = np.random.randn(M, N) / np.sqrt(M)  # Normalized to have variance 1/M
+# M = np.astype(np.floor(N / 2), np.int32) # Number measurements
+M = 2500 # Number measurements
+# A = np.random.randn(M, N) # Normalized to have variance 1/M
 # Instead of random A matrix create an identity matrix and randomly select M rows
 identity_matrix = np.eye(N)  # Create an identity matrix of size N x N
 selected_rows = np.random.choice(N, M, replace=False)  # Randomly select M rows
@@ -48,13 +58,13 @@ train_noise_power = train_noise_power.to(config.device)
 
 # Prepare the test dataset
 dataset_path = "data/processed_celeba_test"  # Path to the folder with images
-batch_size = 10
+batch_size = 1
 celebA_loader = CelebALoader(root_dir=dataset_path, batch_size=batch_size, shuffle=False)
 dataloader = celebA_loader.get_dataloader()
 
 # Annealling parameters
 alpha_step = 8e-6
-beta_noise = 1
+beta_noise = 1.
 
 # Test NMSE
 NMSE = 0.0
@@ -90,8 +100,8 @@ for images, _ in tqdm(dataloader):
             grad_noise = np.sqrt(2 * alpha * beta_noise) * torch.randn_like(current_estimate)
 
             # Update the estimate
-            current_estimate = current_estimate \
-            + alpha * (score + conditional_score.view(batch_size, 3, 64, 64)) + grad_noise
+            current_estimate = current_estimate + \
+                  alpha * (score + conditional_score.view(batch_size, 3, 64, 64)) + grad_noise
     # Denoise
     with torch.no_grad():
         last_noise = (len(model.sigmas) - 1) * \
@@ -102,6 +112,8 @@ for images, _ in tqdm(dataloader):
     # Compute NMSE for this batch
     NMSE += computeNMSE(current_estimate, images)
     num_samples += images.shape[0]
+
+    break
 
 print("NMSE:", NMSE.item() / num_samples)
 

@@ -48,7 +48,7 @@ class CelebALoader:
             # transforms.CenterCrop(crop_size),     # Center crop to crop_size
             # transforms.Resize((resize_size, resize_size)),  # Resize cropped images
             transforms.ToTensor(),               # Convert images to PyTorch tensors
-            transforms.Normalize((0.5,), (0.5,))  # Normalize pixel values to [-1, 1]
+            # transforms.Normalize((0.5,), (0.5,))  # Normalize pixel values to [-1, 1]
         ])
 
         # Initialize the dataset

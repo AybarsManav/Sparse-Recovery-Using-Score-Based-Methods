@@ -64,6 +64,7 @@ config.training.num_workers    = 4
 config.training.n_epochs       = 10 #500000
 config.training.anneal_power   = 2 
 config.training.log_all_sigmas = False
+config.training.checkpoint_freq = 5000
 
 # Testing
 config.test.langevin_steps = 5
@@ -75,18 +76,18 @@ config.data.image_size     = [64, 64] # 64
 config.data.num_pilots     = config.data.image_size[1]
 config.data.norm_channels  = 'global'
 config.data.logit_transform= False
-config.data.rescaled       = True
+config.data.rescaled       = False
 
 transform = transforms.Compose([
     transforms.ToTensor(),
-    transforms.Normalize((0.5,), (0.5,))
+    # transforms.Normalize((0.5,), (0.5,)) # Removed since the original paper does not use it
 ])
 
 # Get datasets and loaders for channels
 dataset = CelebADataset(root_dir=args.dataset_path, transform=transform)
 
 # Split dataset into training and validation sets
-train_size = int(0.8 * len(dataset))
+train_size = int(0.95 * len(dataset))
 val_size = len(dataset) - train_size
 train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
 
@@ -113,7 +114,7 @@ sigmas = get_sigmas(config)
 if args.resume:
     print(f"Resuming training from checkpoint: {args.resume}")
     checkpoint = torch.load(args.resume, weights_only=False)
-    start_epoch = checkpoint['epoch'] + 1
+    start_epoch = checkpoint['epoch']
     step = checkpoint['step']
     diffuser.load_state_dict(checkpoint['model_state'])
     optimizer.load_state_dict(checkpoint['optimizer_state'])
@@ -175,9 +176,10 @@ for epoch in tqdm(range(start_epoch, config.training.n_epochs)):
 
                 average_val_loss = np.mean(local_val_losses)
                 val_loss.append(average_val_loss)
-
+                del val_score
+        if config.training.checkpoint_freq > 0 and step % config.training.checkpoint_freq == 0:
             # Save checkpoint
-            checkpoint_path = os.path.join(config.log_path, 'checkpoint_latest.pt')
+            checkpoint_path = os.path.join(config.log_path, f'checkpoint_{step}.pt')
             torch.save({
                 'epoch': epoch,
                 'step': step,
@@ -194,9 +196,13 @@ for epoch in tqdm(range(start_epoch, config.training.n_epochs)):
             epoch, step, loss, val_dsm_loss))
         
 # Save final weights
-torch.save({'model_state': diffuser.state_dict(),
-            'optimizer_state': optimizer.state_dict(),
-            'config': config,
-            'train_loss': train_loss,
-            'val_loss': val_loss}, 
-   os.path.join(config.log_path, 'final_model.pt'))
+torch.save({
+        'epoch': epoch,
+        'step': step,
+        'model_state': diffuser.state_dict(),
+        'optimizer_state': optimizer.state_dict(),
+        'ema_state': ema_helper.state_dict() if config.model.ema else None,
+        'train_loss': train_loss,
+        'val_loss': val_loss,
+        'config': config,
+    },os.path.join(config.log_path, 'final_model.pt'))
