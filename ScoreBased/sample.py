@@ -30,7 +30,9 @@ model.eval()
 x_mod = torch.randn(1, 3, 64, 64).to(config.device)
 
 # Using anneal Langevin Dynamics to sample from the model
-images = anneal_Langevin_dynamics(x_mod, model, model.sigmas, n_steps_each=5, step_lr=8e-6,
+images = anneal_Langevin_dynamics(x_mod, model, model.sigmas,
+                             n_steps_each=config.sampling.n_steps_each,
+                             step_lr=config.sampling.step_lr,
                              final_only=False, verbose=True, denoise=True)
 
 # Plot the images
