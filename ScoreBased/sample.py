@@ -5,17 +5,25 @@ import torch, sys
 sys.path.append('./')
 from tqdm import tqdm as tqdm
 from ncsnv2.models.ncsnv2 import NCSNv2Deepest
+from ncsnv2.models.ema    import EMAHelper
 from CelebA.celebA_loader import CelebALoader
 import matplotlib.pyplot as plt
 from ncsnv2.models import anneal_Langevin_dynamics
 
 # Load the model
-target_file = "models/final_model.pt"
-contents = torch.load(target_file, weights_only=False)
+target_file = "models/checkpoint_latest.pt"
+contents = torch.load(target_file, weights_only=False, map_location="cuda:0")
 config = contents['config']
 model = NCSNv2Deepest(config=config)
 model = model.to(config.device)
-model.load_state_dict(contents['model_state'])
+
+if config.model.ema:
+    ema_helper = EMAHelper(mu=config.model.ema_rate)
+    ema_helper.register(model)
+    ema_helper.load_state_dict(contents["ema_state"])
+    ema_helper.ema(model)
+else:
+    model.load_state_dict(contents['model_state'])
 model.eval()
 
 # Create initial noise
