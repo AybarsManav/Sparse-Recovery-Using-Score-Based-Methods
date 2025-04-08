@@ -8,6 +8,8 @@ from ncsnv2.models.ncsnv2 import NCSNv2Deepest
 from ncsnv2.models.ema    import EMAHelper
 from CelebA.celebA_loader import CelebALoader
 import matplotlib.pyplot as plt
+from torchvision import transforms
+
 
 metrics = False
 
@@ -68,8 +70,14 @@ train_noise_power = train_noise_power.to(config.device)
 
 # Prepare the test dataset
 dataset_path = "data/processed_celeba_test"  # Path to the folder with images
-batch_size = 1
-celebA_loader = CelebALoader(root_dir=dataset_path, batch_size=batch_size, shuffle=False)
+batch_size = 1 #maybe increase this when calculating metrics
+
+transform = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.RandomHorizontalFlip(p=0.5)  # Always flip the image
+])
+
+celebA_loader = CelebALoader(root_dir=dataset_path, batch_size=batch_size, shuffle=False, transform=transform)
 dataloader = celebA_loader.get_dataloader()
 
 
@@ -84,10 +92,10 @@ num_samples = 0
 
 # Test the model on the dataset
 for images, _ in tqdm(dataloader):
-    
+
     #this is very hardcoded sorry aybars if u see this<3
     images = images.to(config.device)
-    images = torch.flip(images, [2])
+    #images = torch.flip(images, [2])
     # Generate random initial estimate
     current_estimate = torch.randn_like(images).to(config.device)
 
