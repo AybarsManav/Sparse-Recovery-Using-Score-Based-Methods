@@ -62,7 +62,7 @@ config.optim.eps           = 3.3e-6
 # Training
 config.training.batch_size     = 64 #128 
 config.training.num_workers    = 4
-config.training.n_epochs       = 10 #500000
+config.training.n_epochs       = 1000 #500000
 config.training.anneal_power   = 2 
 config.training.log_all_sigmas = False
 config.training.checkpoint_freq = 5000
