@@ -140,7 +140,6 @@ ax = fig.add_subplot(1, 2, 2)
 ax.imshow((current_estimate[0].cpu().permute(1, 2, 0) + 1) / 2)
 ax.set_title("Estimated Image")
 ax.axis('off')
-plt.show()
 
 plt.savefig(os.path.join(save_dir, "generated.png"))
 plt.show()
