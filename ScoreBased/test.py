@@ -144,24 +144,8 @@ ax.axis('off')
 plt.savefig(os.path.join(save_dir, "generated.png"))
 plt.show()
 
-print('tu li smo')
-'''
 
-import matplotlib.pyplot as plt
 
-# Function to compute SNR
-def compute_snr(signal, noise_power):
-    """
-    Compute Signal-to-Noise Ratio (SNR) in dB.
-    Args:
-        signal: Tensor representing the signal.
-        noise_power: Noise power (scalar).
-    Returns:
-        SNR in dB.
-    """
-    signal_power = torch.norm(signal) ** 2 / signal.numel()
-    snr = 10 * torch.log10(signal_power / noise_power)
-    return snr.item()
 
 # NMSE vs SNR for fixed M
 fixed_M = 2500
@@ -205,9 +189,8 @@ for noise_power in noise_powers:
     snr_values.append(compute_snr(images, noise_power))
     nmse_values_snr.append(NMSE.item() / num_samples)
 
-# NMSE vs M for fixed SNR
-fixed_snr = 20  # Fixed SNR in dB
-m_values = [1000, 2000, 3000, 4000, 5000]  # Different M values
+fixed_snr = 20  
+m_values = [1000, 2000, 3000, 4000, 5000]  
 nmse_values_m = []
 
 for M in m_values:
@@ -221,7 +204,6 @@ for M in m_values:
         images = images.to(config.device)
         current_estimate = torch.randn_like(images).to(config.device)
 
-        # Reconstruction process (same as before)
         for step_idx in range(config.model.num_classes):
             current_sigma = model.sigmas[step_idx].item()
             labels = torch.ones(current_estimate.shape[0]).to(config.device) * step_idx
@@ -247,21 +229,24 @@ for M in m_values:
 
     nmse_values_m.append(NMSE.item() / num_samples)
 
-# Plot NMSE vs SNR
 plt.figure(figsize=(10, 5))
 plt.plot(snr_values, nmse_values_snr, marker='o')
 plt.xlabel("SNR (dB)")
 plt.ylabel("NMSE")
 plt.title("NMSE vs SNR (Fixed M)")
 plt.grid()
+plt.savefig(os.path.join(save_dir, "nmse vs snr.png"))
+
 plt.show()
 
-# Plot NMSE vs M
+
+
 plt.figure(figsize=(10, 5))
 plt.plot(m_values, nmse_values_m, marker='o')
 plt.xlabel("Number of Measurements (M)")
 plt.ylabel("NMSE")
 plt.title("NMSE vs M (Fixed SNR)")
 plt.grid()
+plt.savefig(os.path.join(save_dir, "nmse vs m.png"))
+
 plt.show()
-'''
