@@ -9,6 +9,7 @@ from ncsnv2.models.ema    import EMAHelper
 from CelebA.celebA_loader import CelebALoader
 import matplotlib.pyplot as plt
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def computeNMSE(x, y):
     """
     Compute the Normalized Mean Squared Error (NMSE) between two tensors.
@@ -20,10 +21,17 @@ def computeNMSE(x, y):
     """
     return torch.norm(x - y) ** 2 / torch.norm(y) ** 2
 
+def compute_snr(signal, noise_power):
+
+    signal_power = torch.norm(signal) ** 2 / signal.numel()
+    snr = 10 * torch.log10(signal_power / noise_power)
+    return snr.item()
+
 # Load the model
 target_file = "models/final_model_1_epoch.pt"
 contents = torch.load(target_file, weights_only=False)
 config = contents['config']
+config.device = device
 model = NCSNv2Deepest(config=config)
 model = model.to(config.device)
 
@@ -117,6 +125,11 @@ for images, _ in tqdm(dataloader):
 
 print("NMSE:", NMSE.item() / num_samples)
 
+
+save_dir = "data/saved"
+os.makedirs(save_dir, exist_ok=True)
+
+
 # Show a sample from the estimated images and original images
 fig = plt.figure(figsize=(10, 5))
 ax = fig.add_subplot(1, 2, 1)
@@ -128,3 +141,128 @@ ax.imshow((current_estimate[0].cpu().permute(1, 2, 0) + 1) / 2)
 ax.set_title("Estimated Image")
 ax.axis('off')
 plt.show()
+
+plt.savefig(os.path.join(save_dir, "generated.png"))
+plt.show()
+
+print('tu li smo')
+'''
+
+import matplotlib.pyplot as plt
+
+# Function to compute SNR
+def compute_snr(signal, noise_power):
+    """
+    Compute Signal-to-Noise Ratio (SNR) in dB.
+    Args:
+        signal: Tensor representing the signal.
+        noise_power: Noise power (scalar).
+    Returns:
+        SNR in dB.
+    """
+    signal_power = torch.norm(signal) ** 2 / signal.numel()
+    snr = 10 * torch.log10(signal_power / noise_power)
+    return snr.item()
+
+# NMSE vs SNR for fixed M
+fixed_M = 2500
+snr_values = []
+nmse_values_snr = []
+noise_powers = [0.001, 0.01, 0.1, 1.0]  # Different noise power levels
+
+for noise_power in noise_powers:
+    NMSE = 0.0
+    num_samples = 0
+    train_noise_power = torch.tensor(noise_power).float().to(config.device)
+
+    for images, _ in tqdm(dataloader):
+        images = images.to(config.device)
+        current_estimate = torch.randn_like(images).to(config.device)
+
+        # Reconstruction process (same as before)
+        for step_idx in range(config.model.num_classes):
+            current_sigma = model.sigmas[step_idx].item()
+            labels = torch.ones(current_estimate.shape[0]).to(config.device) * step_idx
+            labels = labels.long()
+            alpha = alpha_step * (current_sigma / config.model.sigma_end) ** 2
+
+            for langevin_step in range(config.test.langevin_steps):
+                with torch.no_grad():
+                    score = model(current_estimate, labels)
+                Y = torch.matmul(A, images.view(images.shape[0], -1, 1))
+                Y_hat = torch.matmul(A, current_estimate.view(current_estimate.shape[0], -1, 1))
+                conditional_score = torch.matmul(A.T, Y - Y_hat) / (train_noise_power + current_sigma ** 2)
+                grad_noise = np.sqrt(2 * alpha * beta_noise) * torch.randn_like(current_estimate)
+                current_estimate = current_estimate + alpha * (score + conditional_score.view(batch_size, 3, 64, 64)) + grad_noise
+
+        with torch.no_grad():
+            last_noise = (len(model.sigmas) - 1) * torch.ones(current_estimate.shape[0], device=current_estimate.device).long()
+            current_estimate = current_estimate + current_sigma ** 2 * model(current_estimate, last_noise)
+
+        NMSE += computeNMSE(current_estimate, images)
+        num_samples += images.shape[0]
+        break  # Only one batch for simplicity
+
+    snr_values.append(compute_snr(images, noise_power))
+    nmse_values_snr.append(NMSE.item() / num_samples)
+
+# NMSE vs M for fixed SNR
+fixed_snr = 20  # Fixed SNR in dB
+m_values = [1000, 2000, 3000, 4000, 5000]  # Different M values
+nmse_values_m = []
+
+for M in m_values:
+    NMSE = 0.0
+    num_samples = 0
+    selected_rows = np.random.choice(N, M, replace=False)
+    A = identity_matrix[selected_rows, :]
+    A = torch.from_numpy(A).float().to(config.device)
+
+    for images, _ in tqdm(dataloader):
+        images = images.to(config.device)
+        current_estimate = torch.randn_like(images).to(config.device)
+
+        # Reconstruction process (same as before)
+        for step_idx in range(config.model.num_classes):
+            current_sigma = model.sigmas[step_idx].item()
+            labels = torch.ones(current_estimate.shape[0]).to(config.device) * step_idx
+            labels = labels.long()
+            alpha = alpha_step * (current_sigma / config.model.sigma_end) ** 2
+
+            for langevin_step in range(config.test.langevin_steps):
+                with torch.no_grad():
+                    score = model(current_estimate, labels)
+                Y = torch.matmul(A, images.view(images.shape[0], -1, 1))
+                Y_hat = torch.matmul(A, current_estimate.view(current_estimate.shape[0], -1, 1))
+                conditional_score = torch.matmul(A.T, Y - Y_hat) / (train_noise_power + current_sigma ** 2)
+                grad_noise = np.sqrt(2 * alpha * beta_noise) * torch.randn_like(current_estimate)
+                current_estimate = current_estimate + alpha * (score + conditional_score.view(batch_size, 3, 64, 64)) + grad_noise
+
+        with torch.no_grad():
+            last_noise = (len(model.sigmas) - 1) * torch.ones(current_estimate.shape[0], device=current_estimate.device).long()
+            current_estimate = current_estimate + current_sigma ** 2 * model(current_estimate, last_noise)
+
+        NMSE += computeNMSE(current_estimate, images)
+        num_samples += images.shape[0]
+        break  # Only one batch for simplicity
+
+    nmse_values_m.append(NMSE.item() / num_samples)
+
+# Plot NMSE vs SNR
+plt.figure(figsize=(10, 5))
+plt.plot(snr_values, nmse_values_snr, marker='o')
+plt.xlabel("SNR (dB)")
+plt.ylabel("NMSE")
+plt.title("NMSE vs SNR (Fixed M)")
+plt.grid()
+plt.show()
+
+# Plot NMSE vs M
+plt.figure(figsize=(10, 5))
+plt.plot(m_values, nmse_values_m, marker='o')
+plt.xlabel("Number of Measurements (M)")
+plt.ylabel("NMSE")
+plt.title("NMSE vs M (Fixed SNR)")
+plt.grid()
+plt.show()
+'''
