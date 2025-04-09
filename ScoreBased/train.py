@@ -138,6 +138,12 @@ else:
 config.log_path = './models/'
 os.makedirs(config.log_path, exist_ok=True)
 
+if config.sampled.snapshot_sampling:
+    torch.manual_seed(42)  # Set seed for reproducibility
+    init_samples = torch.rand(10, config.data.channels,
+                              config.data.image_size[0], config.data.image_size[1],
+                              device=config.device)
+
 # For each epoch
 for epoch in tqdm(range(start_epoch, config.training.n_epochs)):
     # For each batch
@@ -213,10 +219,6 @@ for epoch in tqdm(range(start_epoch, config.training.n_epochs)):
                 test_score = diffuser
 
             test_score.eval()
-
-            init_samples = torch.rand(10, config.data.channels,
-                                    config.data.image_size[0], config.data.image_size[1],
-                                    device=config.device)
 
             all_samples = anneal_Langevin_dynamics(init_samples, test_score, sigmas,
                                                 config.sampling.n_steps_each,

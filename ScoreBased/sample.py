@@ -2,6 +2,7 @@ import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 import numpy as np
 import torch, sys
+from torchvision.utils import make_grid, save_image
 sys.path.append('./')
 from tqdm import tqdm as tqdm
 from ncsnv2.models.ncsnv2 import NCSNv2Deepest
@@ -11,7 +12,7 @@ import matplotlib.pyplot as plt
 from ncsnv2.models import anneal_Langevin_dynamics
 
 # Load the model
-target_file = "models/checkpoint_latest.pt"
+target_file = "models/checkpoint_15000.pt"
 contents = torch.load(target_file, weights_only=False, map_location="cuda:0")
 config = contents['config']
 model = NCSNv2Deepest(config=config)
@@ -27,7 +28,10 @@ else:
 model.eval()
 
 # Create initial noise
-x_mod = torch.randn(1, 3, 64, 64).to(config.device)
+torch.manual_seed(42)  # Set seed for reproducibility
+x_mod = torch.rand(10, config.data.channels,
+                            config.data.image_size[0], config.data.image_size[1],
+                            device=config.device)
 
 # Using anneal Langevin Dynamics to sample from the model
 images = anneal_Langevin_dynamics(x_mod, model, model.sigmas,
@@ -35,12 +39,12 @@ images = anneal_Langevin_dynamics(x_mod, model, model.sigmas,
                              step_lr=config.sampling.step_lr,
                              final_only=False, verbose=True, denoise=True)
 
-# Plot the images
-plt.figure(figsize=(10, 4))
-selected_images = images[::50]  # Select every 50th image
-for i, image in enumerate(selected_images[:10]):  # Ensure only 10 images are plotted
-    plt.subplot(2, 5, i + 1)  # Create a 2x5 grid
-    plt.imshow((image[0].permute(1, 2, 0).cpu().numpy() + 1) / 2)
-    plt.axis('off')
-plt.tight_layout()
-plt.show()
+sample = images[-1].view(images[-1].shape[0], config.data.channels,
+                                    config.data.image_size[0],
+                                    config.data.image_size[1])
+
+
+image_grid = make_grid(sample, 5)
+os.makedirs("samples/", exist_ok=True)
+save_image(image_grid,
+    os.path.join("samples/", 'image_grid_{}.png'.format(target_file.split('/')[-1].replace('.pt', ''))))
