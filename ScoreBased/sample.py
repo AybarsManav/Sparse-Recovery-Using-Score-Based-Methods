@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 from ncsnv2.models import anneal_Langevin_dynamics
 
 # Load the model
-target_file = "models/checkpoint_15000.pt"
+target_file = "models/checkpoint_25000.pt"
 contents = torch.load(target_file, weights_only=False, map_location="cuda:0")
 config = contents['config']
 model = NCSNv2Deepest(config=config)

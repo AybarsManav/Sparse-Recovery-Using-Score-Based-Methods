@@ -108,7 +108,7 @@ def langevin_dynamics_reconstruction(model, current_estimate, images, A,
     return current_estimate
 
 # Load the model
-target_file = "models/checkpoint_15000.pt"
+target_file = "models/checkpoint_25000.pt"
 contents = torch.load(target_file, weights_only=False)
 config = contents['config']
 config.device = device
@@ -196,7 +196,7 @@ plt.show()
 if metrics:
     ############### NMSE vs SNR for fixed M ################
     fixed_M = 2500
-    snr_db_values = np.arange(-5, 30, 5)  # Different SNR(dB) values
+    snr_db_values = np.arange(-5, 25.1, 10)  # Different SNR(dB) values
     nmse_values_snr = []
 
     for snr_db in snr_db_values:
@@ -225,7 +225,7 @@ if metrics:
 
     ################# Different M for fixed SNR ################
     fixed_snr = 20  
-    m_values = np.arange(500, 5500, 1000) # Different M values
+    m_values = np.arange(500, 4501, 1000) # Different M values
     nmse_values_m = []
 
     for M in m_values:
