@@ -65,7 +65,7 @@ config.training.num_workers    = 4
 config.training.n_epochs       = 1000 #500000
 config.training.anneal_power   = 2 
 config.training.log_all_sigmas = False
-config.training.checkpoint_freq = 5000
+config.training.checkpoint_freq = 10000
 
 # Testing
 config.test.langevin_steps = 5
@@ -83,7 +83,7 @@ config.data.rescaled       = False
 config.sampling.n_steps_each = 5
 config.sampling.step_lr      = 3.3e-6
 config.sampling.denoise     = True
-config.sampling.snapshot_sampling = True
+config.sampling.snapshot_sampling = False
 config.sampling.snap_shot_freq = 5000
 
 transform = transforms.Compose([
