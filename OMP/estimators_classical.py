@@ -17,7 +17,6 @@ def dct2(image_channel):
 def idct2(image_channel):
     return fftpack.idct(fftpack.idct(image_channel.T, norm='ortho').T, norm='ortho')
 
-
 def vec(channels):
     image = np.zeros((64, 64, 3))
     for i, channel in enumerate(channels):
@@ -110,13 +109,13 @@ def lasso_dct_estimator(A_val, y_batch_val, batch_size):
 
 if __name__ == "__main__":
     batch_size = 1
-    dataset_path = "data/processed_celeba"  # Path to the folder with images
+    dataset_path = "data/processed_celeba_test"  # Path to the folder with images
     # Initialize the CelebALoader
     celebA_loader = CelebALoader(root_dir=dataset_path, batch_size=batch_size, shuffle=False)
     # Get a batch of images
     dataloader = celebA_loader.get_dataloader()
     for images, _ in dataloader:  # `_` because we don't need labels
-        images = images.numpy()
+        images = images.permute(0, 2, 3, 1).numpy()
         break
     # Generate a random MxN measurement matrix A with elements sampled from gaussian 0 mean and 1/M variance
     M = 500 # Number measurements
@@ -144,11 +143,11 @@ if __name__ == "__main__":
     fig = plt.figure(figsize=(10, 5))
     gs = gridspec.GridSpec(1, 2)
     ax1 = fig.add_subplot(gs[0, 0])
-    ax1.imshow((images[0].transpose(1, 2, 0) + 1) / 2)
+    ax1.imshow(images[0])
     ax1.set_title("Original Image")
     ax1.axis('off')
     ax2 = fig.add_subplot(gs[0, 1])
-    ax2.imshow((x_hat_batch[0].reshape(3, 64, 64).transpose(1, 2, 0) + 1) / 2)
+    ax2.imshow(x_hat_batch[0].reshape(64, 64, 3) )
     ax2.set_title("Estimated Image")
     ax2.axis('off')
     plt.show()
