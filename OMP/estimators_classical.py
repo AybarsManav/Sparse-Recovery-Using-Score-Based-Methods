@@ -278,7 +278,7 @@ if __name__ == "__main__":
             images += measurement_noise
 
             # Sample the images
-            y_batch = np.zeros((batch_size, fixed_M))
+            y_batch = np.zeros((batch_size, M))
             for i in range(batch_size):
                 y_batch[i] = np.matmul(Phi_us.T, images[i].reshape(-1))
             
