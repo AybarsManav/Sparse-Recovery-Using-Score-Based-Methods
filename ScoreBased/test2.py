@@ -216,6 +216,14 @@ variance_map = np.var(posterior_samples, axis=0)  # Shape: [batch_size, channels
 # Normalize variance for visualization
 normalized_variance = (variance_map - variance_map.min()) / (variance_map.max() - variance_map.min())
 
+dataset_path = "data/processed_celeba_test"  # Path to the folder with images
+batch_size = 1  # Process one image at a time
+celebA_loader = CelebALoader(root_dir=dataset_path, batch_size=batch_size, shuffle=False)
+dataloader = celebA_loader.get_dataloader()
+
+# Specify the target image filename
+target_image_filename = "182340.jpg" 
+
 # Generate confidence heatmaps
 #for i in range(images.shape[0]):  # Iterate over batch
 for i in range(1):  # Iterate over batch
