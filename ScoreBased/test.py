@@ -70,14 +70,14 @@ train_noise_power = train_noise_power.to(config.device)
 
 # Prepare the test dataset
 dataset_path = "data/processed_celeba_test"  # Path to the folder with images
-batch_size = 1 #maybe increase this when calculating metrics
+batch_size = 16 #1 #maybe increase this when calculating metrics
 
-transform = transforms.Compose([
-    transforms.ToTensor(),
-    transforms.RandomHorizontalFlip(p=0.5)  # Always flip the image
-])
+#transform = transforms.Compose([
+#    transforms.ToTensor(),
+#    transforms.RandomHorizontalFlip(p=0.5)  # Always flip the image
+#])
 
-celebA_loader = CelebALoader(root_dir=dataset_path, batch_size=batch_size, shuffle=False, transform=transform)
+celebA_loader = CelebALoader(root_dir=dataset_path, batch_size=batch_size, shuffle=False)
 dataloader = celebA_loader.get_dataloader()
 
 
