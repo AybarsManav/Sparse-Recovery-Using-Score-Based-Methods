@@ -223,9 +223,85 @@ dataloader = celebA_loader.get_dataloader()
 
 # Specify the target image filename
 target_image_filename = "182340.jpg" 
+for images, filenames in tqdm(dataloader):
+    if target_image_filename in filenames:  # Check if the current batch contains the target image
+        images = images.to(config.device)
 
+        # Compute measurement noise and noise power for the given SNR
+        measurement_noise, measurement_noise_power = compute_noise_for_snr(images, snr_db)
+
+        # Generate random initial estimate
+        current_estimate = torch.randn_like(images).to(config.device)
+
+        # Langevin dynamics for reconstruction
+        current_estimate = langevin_dynamics_reconstruction(
+            model, current_estimate, images, A,
+            measurement_noise_power, measurement_noise,
+            alpha_step, beta_noise)
+
+        # Compute NMSE for this image
+        NMSE = computeNMSE(current_estimate, images)
+        print(f"NMSE for {target_image_filename}: {NMSE.item()}")
+
+        # Save the generated images
+        save_dir = "data/saved"
+        os.makedirs(save_dir, exist_ok=True)
+
+        # Show and save the original and reconstructed images
+        fig = plt.figure(figsize=(10, 5))
+        ax = fig.add_subplot(1, 2, 1)
+        ax.imshow(images[0].cpu().permute(1, 2, 0))
+        ax.set_title("Original Image")
+        ax.axis('off')
+
+        ax = fig.add_subplot(1, 2, 2)
+        ax.imshow(current_estimate[0].cpu().permute(1, 2, 0))
+        ax.set_title("Estimated Image")
+        ax.axis('off')
+
+        plt.savefig(os.path.join(save_dir, f"generated_{target_image_filename}.png"))
+        plt.show()
+
+        # Generate posterior samples for uncertainty estimation
+        num_samples = 10  # Number of posterior samples to generate
+        posterior_samples = []
+
+        for _ in range(num_samples):
+            # Generate a random initial estimate
+            current_estimate = torch.randn_like(images).to(config.device)
+
+            # Langevin dynamics for reconstruction
+            current_estimate = langevin_dynamics_reconstruction(
+                model, current_estimate, images, A,
+                measurement_noise_power, measurement_noise,
+                alpha_step, beta_noise)
+
+            posterior_samples.append(current_estimate.cpu().numpy())
+
+        # Convert posterior samples to a numpy array
+        posterior_samples = np.stack(posterior_samples, axis=0)  # Shape: [num_samples, batch_size, channels, height, width]
+
+        # Compute pixel-wise variance across posterior samples
+        variance_map = np.var(posterior_samples, axis=0)  # Shape: [batch_size, channels, height, width]
+
+        # Normalize variance for visualization
+        normalized_variance = (variance_map - variance_map.min()) / (variance_map.max() - variance_map.min())
+
+        # Generate confidence heatmap for the target image
+        heatmap = normalized_variance[0].mean(axis=0)  # Average over channels for grayscale heatmap
+
+        # Plot and save the heatmap
+        fig, ax = plt.subplots(figsize=(5, 5))
+        ax.imshow(heatmap, cmap="hot")
+        ax.set_title("Uncertainty Heatmap")
+        ax.axis("off")
+        plt.savefig(os.path.join(save_dir, f"uncertainty_heatmap_{target_image_filename}.png"))
+        plt.show()
+
+        break 
 # Generate confidence heatmaps
 #for i in range(images.shape[0]):  # Iterate over batch
+'''
 for i in range(1):  # Iterate over batch
 
     original_image = images[i].cpu().permute(1, 2, 0).numpy()  # Convert to HWC format
@@ -248,7 +324,7 @@ for i in range(1):  # Iterate over batch
 
     plt.savefig(os.path.join(save_dir, f"uncertainty_heatmap_{i}.png"))
     plt.show()
-
+'''
 
 # This part is for generating plots and computing metrics
 if metrics:
