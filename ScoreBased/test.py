@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from torchvision import transforms
 
 
-metrics = False
+metrics = True
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def computeNMSE(x, y):
@@ -161,88 +161,101 @@ plt.show()
 
 
 if metrics:
-    # NMSE vs SNR for fixed M
-    fixed_M = 2500
-    snr_values = []
-    nmse_values_snr = []
-    noise_powers = [0.001, 0.01, 0.1, 1.0]  # Different noise power levels
+    metrics_file = os.path.join(save_dir, "metrics.txt")
+    with open(metrics_file, "w") as f:
+        # NMSE vs SNR for fixed M
+        fixed_M = 2500
+        snr_values = []
+        nmse_values_snr = []
+        noise_powers = [0.001, 0.01, 0.1, 1.0]  # Different noise power levels
 
-    for noise_power in noise_powers:
-        NMSE = 0.0
-        num_samples = 0
-        train_noise_power = torch.tensor(noise_power).float().to(config.device)
+        f.write("NMSE vs SNR (Fixed M):\n")
+        for noise_power in noise_powers:
+            NMSE = 0.0
+            num_samples = 0
+            train_noise_power = torch.tensor(noise_power).float().to(config.device)
 
-        for images, _ in tqdm(dataloader):
-            images = images.to(config.device)
-            current_estimate = torch.randn_like(images).to(config.device)
+            for images, _ in tqdm(dataloader):
+                images = images.to(config.device)
+                current_estimate = torch.randn_like(images).to(config.device)
 
-            # Reconstruction process (same as before)
-            for step_idx in range(config.model.num_classes):
-                current_sigma = model.sigmas[step_idx].item()
-                labels = torch.ones(current_estimate.shape[0]).to(config.device) * step_idx
-                labels = labels.long()
-                alpha = alpha_step * (current_sigma / config.model.sigma_end) ** 2
+                # Reconstruction process (same as before)
+                for step_idx in range(config.model.num_classes):
+                    current_sigma = model.sigmas[step_idx].item()
+                    labels = torch.ones(current_estimate.shape[0]).to(config.device) * step_idx
+                    labels = labels.long()
+                    alpha = alpha_step * (current_sigma / config.model.sigma_end) ** 2
 
-                for langevin_step in range(config.test.langevin_steps):
-                    with torch.no_grad():
-                        score = model(current_estimate, labels)
-                    Y = torch.matmul(A, images.view(images.shape[0], -1, 1))
-                    Y_hat = torch.matmul(A, current_estimate.view(current_estimate.shape[0], -1, 1))
-                    conditional_score = torch.matmul(A.T, Y - Y_hat) / (train_noise_power + current_sigma ** 2)
-                    grad_noise = np.sqrt(2 * alpha * beta_noise) * torch.randn_like(current_estimate)
-                    current_estimate = current_estimate + alpha * (score + conditional_score.view(batch_size, 3, 64, 64)) + grad_noise
+                    for langevin_step in range(config.test.langevin_steps):
+                        with torch.no_grad():
+                            score = model(current_estimate, labels)
+                        Y = torch.matmul(A, images.view(images.shape[0], -1, 1))
+                        Y_hat = torch.matmul(A, current_estimate.view(current_estimate.shape[0], -1, 1))
+                        conditional_score = torch.matmul(A.T, Y - Y_hat) / (train_noise_power + current_sigma ** 2)
+                        grad_noise = np.sqrt(2 * alpha * beta_noise) * torch.randn_like(current_estimate)
+                        current_estimate = current_estimate + alpha * (score + conditional_score.view(batch_size, 3, 64, 64)) + grad_noise
 
-            with torch.no_grad():
-                last_noise = (len(model.sigmas) - 1) * torch.ones(current_estimate.shape[0], device=current_estimate.device).long()
-                current_estimate = current_estimate + current_sigma ** 2 * model(current_estimate, last_noise)
+                with torch.no_grad():
+                    last_noise = (len(model.sigmas) - 1) * torch.ones(current_estimate.shape[0], device=current_estimate.device).long()
+                    current_estimate = current_estimate + current_sigma ** 2 * model(current_estimate, last_noise)
 
-            NMSE += computeNMSE(current_estimate, images)
-            num_samples += images.shape[0]
-            break  # Only one batch for simplicity
+                NMSE += computeNMSE(current_estimate, images)
+                num_samples += images.shape[0]
+                break  # Only one batch for simplicity
 
-        snr_values.append(compute_snr(images, noise_power))
-        nmse_values_snr.append(NMSE.item() / num_samples)
+            snr = compute_snr(images, noise_power)
+            snr_values.append(snr)
+            nmse = NMSE.item() / num_samples
+            nmse_values_snr.append(nmse)
 
-    fixed_snr = 20  
-    m_values = [1000, 2000, 3000, 4000, 5000]  
-    nmse_values_m = []
+            f.write(f"SNR: {snr:.2f} dB, NMSE: {nmse:.6f}\n")
 
-    for M in m_values:
-        NMSE = 0.0
-        num_samples = 0
-        selected_rows = np.random.choice(N, M, replace=False)
-        A = identity_matrix[selected_rows, :]
-        A = torch.from_numpy(A).float().to(config.device)
+        # NMSE vs M (Fixed SNR)
+        fixed_snr = 20  
+        m_values = [1000, 2000, 3000, 4000, 5000]  
+        nmse_values_m = []
 
-        for images, _ in tqdm(dataloader):
-            images = images.to(config.device)
-            current_estimate = torch.randn_like(images).to(config.device)
+        f.write("\nNMSE vs M (Fixed SNR):\n")
+        for M in m_values:
+            NMSE = 0.0
+            num_samples = 0
+            selected_rows = np.random.choice(N, M, replace=False)
+            A = identity_matrix[selected_rows, :]
+            A = torch.from_numpy(A).float().to(config.device)
 
-            for step_idx in range(config.model.num_classes):
-                current_sigma = model.sigmas[step_idx].item()
-                labels = torch.ones(current_estimate.shape[0]).to(config.device) * step_idx
-                labels = labels.long()
-                alpha = alpha_step * (current_sigma / config.model.sigma_end) ** 2
+            for images, _ in tqdm(dataloader):
+                images = images.to(config.device)
+                current_estimate = torch.randn_like(images).to(config.device)
 
-                for langevin_step in range(config.test.langevin_steps):
-                    with torch.no_grad():
-                        score = model(current_estimate, labels)
-                    Y = torch.matmul(A, images.view(images.shape[0], -1, 1))
-                    Y_hat = torch.matmul(A, current_estimate.view(current_estimate.shape[0], -1, 1))
-                    conditional_score = torch.matmul(A.T, Y - Y_hat) / (train_noise_power + current_sigma ** 2)
-                    grad_noise = np.sqrt(2 * alpha * beta_noise) * torch.randn_like(current_estimate)
-                    current_estimate = current_estimate + alpha * (score + conditional_score.view(batch_size, 3, 64, 64)) + grad_noise
+                for step_idx in range(config.model.num_classes):
+                    current_sigma = model.sigmas[step_idx].item()
+                    labels = torch.ones(current_estimate.shape[0]).to(config.device) * step_idx
+                    labels = labels.long()
+                    alpha = alpha_step * (current_sigma / config.model.sigma_end) ** 2
 
-            with torch.no_grad():
-                last_noise = (len(model.sigmas) - 1) * torch.ones(current_estimate.shape[0], device=current_estimate.device).long()
-                current_estimate = current_estimate + current_sigma ** 2 * model(current_estimate, last_noise)
+                    for langevin_step in range(config.test.langevin_steps):
+                        with torch.no_grad():
+                            score = model(current_estimate, labels)
+                        Y = torch.matmul(A, images.view(images.shape[0], -1, 1))
+                        Y_hat = torch.matmul(A, current_estimate.view(current_estimate.shape[0], -1, 1))
+                        conditional_score = torch.matmul(A.T, Y - Y_hat) / (train_noise_power + current_sigma ** 2)
+                        grad_noise = np.sqrt(2 * alpha * beta_noise) * torch.randn_like(current_estimate)
+                        current_estimate = current_estimate + alpha * (score + conditional_score.view(batch_size, 3, 64, 64)) + grad_noise
 
-            NMSE += computeNMSE(current_estimate, images)
-            num_samples += images.shape[0]
-            break  # Only one batch for simplicity
+                with torch.no_grad():
+                    last_noise = (len(model.sigmas) - 1) * torch.ones(current_estimate.shape[0], device=current_estimate.device).long()
+                    current_estimate = current_estimate + current_sigma ** 2 * model(current_estimate, last_noise)
 
-        nmse_values_m.append(NMSE.item() / num_samples)
+                NMSE += computeNMSE(current_estimate, images)
+                num_samples += images.shape[0]
+                break  # Only one batch for simplicity
 
+            nmse = NMSE.item() / num_samples
+            nmse_values_m.append(nmse)
+
+            f.write(f"M: {M}, NMSE: {nmse:.6f}\n")
+
+        
     plt.figure(figsize=(10, 5))
     plt.plot(snr_values, nmse_values_snr, marker='o')
     plt.xlabel("SNR (dB)")
