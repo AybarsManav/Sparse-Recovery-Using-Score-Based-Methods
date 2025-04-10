@@ -10,7 +10,7 @@ from CelebA.celebA_loader import CelebALoader
 import matplotlib.pyplot as plt
 from torchvision import transforms
 
-metrics = True # Set to True to compute metrics and plot graphs
+metrics = False # Set to True to compute metrics and plot graphs
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Is cuda available:", torch.cuda.is_available())
 
@@ -191,6 +191,54 @@ ax.set_title("Estimated Image")
 ax.axis('off')
 plt.savefig(os.path.join(save_dir, "generated.png"))
 plt.show()
+
+num_samples = 10  # Number of posterior samples to generate
+posterior_samples = []
+
+for _ in range(num_samples):
+    # Generate a random initial estimate
+    current_estimate = torch.randn_like(images).to(config.device)
+
+    # Langevin dynamics for reconstruction
+    current_estimate = langevin_dynamics_reconstruction(
+        model, current_estimate, images, A,
+        measurement_noise_power, measurement_noise,
+        alpha_step, beta_noise)
+
+    posterior_samples.append(current_estimate.cpu().numpy())
+
+# Convert posterior samples to a numpy array
+posterior_samples = np.stack(posterior_samples, axis=0)  # Shape: [num_samples, batch_size, channels, height, width]
+
+# Compute pixel-wise variance across posterior samples
+variance_map = np.var(posterior_samples, axis=0)  # Shape: [batch_size, channels, height, width]
+
+# Normalize variance for visualization
+normalized_variance = (variance_map - variance_map.min()) / (variance_map.max() - variance_map.min())
+
+# Generate confidence heatmaps
+for i in range(images.shape[0]):  # Iterate over batch
+    original_image = images[i].cpu().permute(1, 2, 0).numpy()  # Convert to HWC format
+    reconstructed_image = current_estimate[i].cpu().permute(1, 2, 0).numpy()
+    heatmap = normalized_variance[i].mean(axis=0)  # Average over channels for grayscale heatmap
+
+    # Plot original image, reconstruction, and heatmap
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+    axes[0].imshow(original_image)
+    axes[0].set_title("Original Image")
+    axes[0].axis("off")
+
+    axes[1].imshow(reconstructed_image)
+    axes[1].set_title("Reconstructed Image")
+    axes[1].axis("off")
+
+    axes[2].imshow(heatmap, cmap="hot")
+    axes[2].set_title("Uncertainty Heatmap")
+    axes[2].axis("off")
+
+    plt.savefig(os.path.join(save_dir, f"uncertainty_heatmap_{i}.png"))
+    plt.show()
+
 
 # This part is for generating plots and computing metrics
 if metrics:
