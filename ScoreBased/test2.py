@@ -153,9 +153,9 @@ NMSE = 0.0
 num_samples = 0
 
 # Test the model on the dataset
-for images, filenames in tqdm(dataloader):
+for images, _ in tqdm(dataloader):
     images = images.to(config.device)
-    print(filenames)
+
     # Compute measurement noise and noise power for the given SNR.
     # Note that SNR is computed on images and noise matrix is sub_sampled through measurement
     measurement_noise, measurement_noise_power = compute_noise_for_snr(images, snr_db)
@@ -192,9 +192,11 @@ ax.axis('off')
 plt.savefig(os.path.join(save_dir, "generated.png"))
 plt.show()
 
-num_samples = 1  # Number of posterior samples to generate
+num_samples = 10  # Number of posterior samples to generate
 posterior_samples = []
-
+# Use only the first image in the dataset for heatmaps
+images, _ = next(iter(dataloader))  # Get the first batch
+images = images.to(config.device)  # Move to the appropriate device
 for _ in range(num_samples):
     # Generate a random initial estimate
     current_estimate = torch.randn_like(images).to(config.device)
@@ -209,17 +211,11 @@ for _ in range(num_samples):
 
 # Convert posterior samples to a numpy array
 posterior_samples = np.stack(posterior_samples, axis=0)  # Shape: [num_samples, batch_size, channels, height, width]
-
-# Compute pixel-wise variance across posterior samples
 variance_map = np.var(posterior_samples, axis=0)  # Shape: [batch_size, channels, height, width]
-
-# Normalize variance for visualization
 normalized_variance = (variance_map - variance_map.min()) / (variance_map.max() - variance_map.min())
 
 # Generate confidence heatmaps
-#for i in range(images.shape[0]):  # Iterate over batch
-for i in range(images.shape[0]):  # Iterate over batch
-    
+for i in range(1):  # Iterate over batch
     original_image = images[i].cpu().permute(1, 2, 0).numpy()  # Convert to HWC format
     reconstructed_image = current_estimate[i].cpu().permute(1, 2, 0).numpy()
     heatmap = normalized_variance[i].mean(axis=0)  # Average over channels for grayscale heatmap
