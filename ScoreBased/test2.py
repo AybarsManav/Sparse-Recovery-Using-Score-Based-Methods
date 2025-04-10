@@ -217,7 +217,9 @@ variance_map = np.var(posterior_samples, axis=0)  # Shape: [batch_size, channels
 normalized_variance = (variance_map - variance_map.min()) / (variance_map.max() - variance_map.min())
 
 # Generate confidence heatmaps
-for i in range(images.shape[0]):  # Iterate over batch
+#for i in range(images.shape[0]):  # Iterate over batch
+for i in range(1):  # Iterate over batch
+
     original_image = images[i].cpu().permute(1, 2, 0).numpy()  # Convert to HWC format
     reconstructed_image = current_estimate[i].cpu().permute(1, 2, 0).numpy()
     heatmap = normalized_variance[i].mean(axis=0)  # Average over channels for grayscale heatmap
