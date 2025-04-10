@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from sklearn.linear_model import Lasso
 from CelebA.celebA_loader import CelebALoader
+import time
 
 def compute_noise_for_snr(signal, snr_db):
     """
@@ -201,7 +202,7 @@ if __name__ == "__main__":
             num_samples = 0
 
             for images, _ in dataloader: # Take one batch of images
-                images = images.permute(0, 2, 3, 1).numpy()
+                images = images.permute(0, 2, 3, 1).numpy() * 2 - 1
                 break
 
             # Compute measurement noise and noise power for the given SNR
@@ -235,26 +236,26 @@ if __name__ == "__main__":
             lasso_nmse_values_snr.append(NMSE_lasso / num_samples)
 
             # Save reconstructed OMP image
-            fig = plt.figure(figsize=(5, 5))
-            plt.imshow((x_hat_batch_omp[0].reshape(64, 64, 3) + 1) / 2)  # Rescale to [0, 1]
-            plt.title("OMP Estimated Image\nSNR: {} dB, M: {}".format(snr_db, fixed_M))
-            plt.axis('off')
-            plt.savefig(os.path.join(save_dir, "omp_reconstructed_snr_{}_M_{}.png".format(snr_db, fixed_M)))
-            plt.close()
+            reconstructed_image = x_hat_batch_omp[0].reshape(64, 64, 3)
+            reconstructed_image = np.clip((reconstructed_image + 1) / 2, 0, 1)  # Rescale to [0, 1]
+            plt.imsave(os.path.join(save_dir, f"omp_snr_{snr_db}.png"), reconstructed_image)
 
             # Save reconstructed Lasso image
-            fig = plt.figure(figsize=(5, 5))
-            plt.imshow((x_hat_batch_lasso[0].reshape(64, 64, 3) + 1) / 2)  # Rescale to [0, 1]
-            plt.title("Lasso Estimated Image\nSNR: {} dB, M: {}".format(snr_db, fixed_M))
-            plt.axis('off')
-            plt.savefig(os.path.join(save_dir, "lasso_reconstructed_snr_{}_M_{}.png".format(snr_db, fixed_M)))
-            plt.close()
+            reconstructed_image = x_hat_batch_lasso[0].reshape(64, 64, 3)
+            reconstructed_image = np.clip((reconstructed_image + 1) / 2, 0, 1)  # Rescale to [0, 1]
+            plt.imsave(os.path.join(save_dir, f"lasso_snr_{snr_db}.png"), reconstructed_image)
+
+        np.save(os.path.join(save_dir, "snr_db_values.npy"), snr_db_values)
+        np.save(os.path.join(save_dir, "lasso_nmse_values_snr.npy"), lasso_nmse_values_snr)
+        np.save(os.path.join(save_dir, "omp_nmse_values_snr.npy"), omp_nmse_values_snr)
 
         ################# Different M for fixed SNR ################
         fixed_snr = 20  # Fixed SNR value
         m_values = np.arange(500, 4501, 1000) # Different M values
         omp_nmse_values_m = []
         lasso_nmse_values_m = []
+        lasso_times = []
+        omp_times = []
 
         for M in m_values:
             NMSE_lasso = 0.0
@@ -262,7 +263,7 @@ if __name__ == "__main__":
             num_samples = 0
 
             for images, _ in dataloader: # Take one batch of images
-                images = images.permute(0, 2, 3, 1).numpy()
+                images = images.permute(0, 2, 3, 1).numpy() * 2 - 1
                 break
 
             # Compute measurement noise and noise power for the given SNR
@@ -283,8 +284,15 @@ if __name__ == "__main__":
                 y_batch[i] = np.matmul(Phi_us.T, images[i].reshape(-1))
             
             # Estimate using lasso and omp
+
+            start_time = time.time()
             x_hat_batch_lasso = lasso_dct_estimator(Phi_us.T, y_batch, batch_size)
-            x_hat_batch_omp = omp_dct_estimator(Phi_us.T, y_batch, batch_size, 1e-6)
+            lasso_times.append(time.time() - start_time)
+
+            if M < 3000:
+                start_time = time.time()
+                x_hat_batch_omp = omp_dct_estimator(Phi_us.T, y_batch, batch_size, 1e-6)
+                omp_times.append(time.time() - start_time)
 
             for i in range(batch_size):
                 # Compute NMSE for each image in the batch
@@ -296,54 +304,23 @@ if __name__ == "__main__":
             lasso_nmse_values_m.append(NMSE_lasso / num_samples)
 
             # Save reconstructed OMP image
-            fig = plt.figure(figsize=(5, 5))
-            plt.imshow((x_hat_batch_omp[0].reshape(64, 64, 3) + 1) / 2)  # Rescale to [0, 1]
-            plt.title("OMP Estimated Image\nSNR: {} dB, M: {}".format(fixed_snr, M))
-            plt.axis('off')
-            plt.savefig(os.path.join(save_dir, "omp_reconstructed_snr_{}_M_{}.png".format(fixed_snr, M)))
-            plt.close()
-
+            reconstructed_image = x_hat_batch_omp[0].reshape(64, 64, 3)
+            reconstructed_image = np.clip(reconstructed_image / 2 + 0.5, 0, 1)
+            plt.imsave(os.path.join(save_dir, f"omp_m_{M}.png"), reconstructed_image)
+            
             # Save reconstructed Lasso image
-            fig = plt.figure(figsize=(5, 5))
-            plt.imshow((x_hat_batch_lasso[0].reshape(64, 64, 3) + 1) / 2)  # Rescale to [0, 1]
-            plt.title("Lasso Estimated Image\nSNR: {} dB, M: {}".format(fixed_snr, M))
-            plt.axis('off')
-            plt.savefig(os.path.join(save_dir, "lasso_reconstructed_snr_{}_M_{}.png".format(fixed_snr, M)))
-            plt.close()
+            reconstructed_image = x_hat_batch_lasso[0].reshape(64, 64, 3)
+            reconstructed_image = np.clip(reconstructed_image / 2 + 0.5, 0, 1)
+            plt.imsave(os.path.join(save_dir, f"lasso_m_{M}.png"), reconstructed_image)
 
-        ########## Plot figures ##########
-        # Plot NMSE vs SNR for fixed M
-        plt.figure(figsize=(10, 5))
-        plt.plot(snr_db_values, omp_nmse_values_snr, marker='o', label='OMP')
-        plt.plot(snr_db_values, lasso_nmse_values_snr, marker='x', label='LASSO')
-        plt.xlabel("SNR (dB)")
-        plt.ylabel("NMSE")
-        plt.title("NMSE vs SNR (Fixed M = {})".format(fixed_M))
-        plt.legend()
-        plt.grid()
-        plt.savefig(os.path.join(save_dir, "nmse_vs_snr_comparison.png"))
-        plt.show()
-
-        # Plot NMSE vs M for fixed SNR
-        plt.figure(figsize=(10, 5))
-        plt.plot(m_values, omp_nmse_values_m, marker='o', label='OMP')
-        plt.plot(m_values, lasso_nmse_values_m, marker='x', label='LASSO')
-        plt.xlabel("Number of Measurements (M)")
-        plt.ylabel("NMSE")
-        plt.title("NMSE vs M (Fixed SNR = {})".format(fixed_snr))
-        plt.legend()
-        plt.grid()
-        plt.savefig(os.path.join(save_dir, "nmse_vs_m_comparison.png"))
-        plt.show()
 
         # Save NMSE values for further analysis
         np.save(os.path.join(save_dir, "m_values.npy"), m_values)
         np.save(os.path.join(save_dir, "lasso_nmse_values_m.npy"), lasso_nmse_values_m)
         np.save(os.path.join(save_dir, "omp_nmse_values_m.npy"), omp_nmse_values_m)
-
-        np.save(os.path.join(save_dir, "snr_db_values.npy"), snr_db_values)
-        np.save(os.path.join(save_dir, "lasso_nmse_values_snr.npy"), lasso_nmse_values_snr)
-        np.save(os.path.join(save_dir, "omp_nmse_values_snr.npy"), omp_nmse_values_snr)
+        # Save timing results
+        np.save(os.path.join(save_dir, "lasso_times.npy"), np.array(lasso_times))
+        np.save(os.path.join(save_dir, "omp_times.npy"), np.array(omp_times))
 
 
 

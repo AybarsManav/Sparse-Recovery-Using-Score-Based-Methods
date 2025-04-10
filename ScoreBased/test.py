@@ -9,8 +9,9 @@ from ncsnv2.models.ema    import EMAHelper
 from CelebA.celebA_loader import CelebALoader
 import matplotlib.pyplot as plt
 from torchvision import transforms
+import time
 
-metrics = True # Set to True to compute metrics and plot graphs
+metrics = False # Set to True to compute metrics and plot graphs
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Is cuda available:", torch.cuda.is_available())
 
@@ -108,7 +109,7 @@ def langevin_dynamics_reconstruction(model, current_estimate, images, A,
     return current_estimate
 
 # Load the model
-target_file = "models/checkpoint_25000.pt"
+target_file = "models/checkpoint_40000.pt"
 contents = torch.load(target_file, weights_only=False)
 config = contents['config']
 config.device = device
@@ -164,10 +165,15 @@ for images, _ in tqdm(dataloader):
     current_estimate = torch.randn_like(images).to(config.device)
 
     # Langevin dynamics for reconstruction
+    start_time = time.time()
+
     current_estimate = langevin_dynamics_reconstruction(
         model, current_estimate, images, A,
         measurement_noise_power, measurement_noise,
         alpha_step, beta_noise)
+
+    end_time = time.time()
+    print(f"Langevin dynamics reconstruction took {end_time - start_time:.2f} seconds.")
 
     # Compute NMSE for this batch
     NMSE += computeNMSE(current_estimate, images)
@@ -191,6 +197,15 @@ ax.set_title("Estimated Image")
 ax.axis('off')
 plt.savefig(os.path.join(save_dir, "generated.png"))
 plt.show()
+
+# Save the first reconstructed image of the batch
+reconstructed_image = current_estimate[0].cpu().permute(1, 2, 0).numpy()
+reconstructed_image = np.clip(reconstructed_image, 0, 1)
+plt.imsave(os.path.join(save_dir, "reconstructed.png"), reconstructed_image)
+# Save the original image
+original_image = images[0].cpu().permute(1, 2, 0).numpy()
+original_image = np.clip(original_image, 0, 1)
+plt.imsave(os.path.join(save_dir, "original.png"), original_image)
 
 # This part is for generating plots and computing metrics
 if metrics:
@@ -223,6 +238,16 @@ if metrics:
 
         nmse_values_snr.append(NMSE.item() / num_samples)
 
+        # Save the first reconstructed image of the batch
+        reconstructed_image = current_estimate[0].cpu().permute(1, 2, 0).numpy()
+        reconstructed_image = np.clip(reconstructed_image, 0, 1)
+        plt.imsave(os.path.join(save_dir, f"reconstructed_snr_{snr_db}.png"), reconstructed_image)
+
+        # Save the original image
+        original_image = images[0].cpu().permute(1, 2, 0).numpy()
+        original_image = np.clip(original_image, 0, 1)
+        plt.imsave(os.path.join(save_dir, f"original_m_{M}.png"), original_image)
+
     ################# Different M for fixed SNR ################
     fixed_snr = 20  
     m_values = np.arange(500, 4501, 1000) # Different M values
@@ -253,6 +278,11 @@ if metrics:
             break  # Only one batch for simplicity
 
         nmse_values_m.append(NMSE.item() / num_samples)
+
+        # Save the first reconstructed image of the batch
+        reconstructed_image = current_estimate[0].cpu().permute(1, 2, 0).numpy()
+        reconstructed_image = np.clip(reconstructed_image, 0, 1)
+        plt.imsave(os.path.join(save_dir, f"reconstructed_m_{M}.png"), reconstructed_image)
 
     ########## Plot figures ##########
     # Plot NMSE vs SNR for fixed M
